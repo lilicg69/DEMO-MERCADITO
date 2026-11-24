@@ -112,6 +112,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:#1f5f3b}
   <button data-act="nav" data-v="vender"><span>🛒</span>Vender</button>
   <button data-act="nav" data-v="hoy"><span>📊</span>Ventas</button>
   <button data-act="nav" data-v="inv"><span>📦</span>Inventario</button>
+  <button data-act="nav" data-v="ped"><span>📲</span>Pedidos</button>
   <button data-act="demoreset"><span>🔄</span>Reiniciar</button>
 </nav>
 <div class="ov" id="ov"><div class="sheet" id="sheet"></div></div>
@@ -266,6 +267,7 @@ function render(){
   if (ui.view === 'vender') vVender();
   else if (ui.view === 'hoy') vHoy();
   else if (ui.view === 'inv') vInv();
+  else if (ui.view === 'ped') vPed();
   else { ui.view = 'vender'; vVender(); }
   m.scrollTop = st;
   renderBar();
@@ -453,6 +455,14 @@ function vInv(){
 }
 
 /* ---------- Vista: Ajustes ---------- */
+function vPed(){
+  if (S.mkt === undefined) S.mkt = 'Mercadito Centro\nMercadito Norte';
+  $('#main').innerHTML = '<div class="card"><b>Pedidos de tus clientes</b><div class="ph">Tus clientes eligen lo que quieren y te mandan el pedido por WhatsApp. Pagan en efectivo cuando lo recogen.</div></div>' +
+    '<div class="card"><label class="l" style="margin-top:0">Escribe tu WhatsApp para probar (10 dígitos)</label><input id="wain" type="tel" inputmode="numeric" maxlength="10" value="' + esc(S.wa || '') + '">' +
+    '<label class="l">Mercaditos donde entregas (uno por línea)</label><textarea id="mktin" rows="3">' + esc(S.mkt || '') + '</textarea>' +
+    '<div class="stack" style="margin-top:12px"><button class="btn go" data-act="pub">Publicar catálogo para pedidos</button></div>' +
+    '<div class="ph">Después toca Ver como cliente y haz un pedido de prueba. El pedido te llega a tu WhatsApp.</div></div>';
+}
 function vAj(){
   var h = '<div class="card"><label class="l" style="margin-top:0">Nombre del puesto</label><input id="shopin" value="' + esc(S.shop) + '"></div>';
   h += '<div class="stack" style="margin-bottom:6px"><button class="btn go" data-act="pnew">+ Agregar producto</button></div>';
@@ -603,6 +613,33 @@ var act = {
       S.sales = []; save(); render(); toast('Ventas borradas');
     });
   },
+  pub: function(){
+    var wa = String(S.wa || '').replace(/\D/g, '');
+    if (wa.length !== 10) { toast('Escribe tu WhatsApp de 10 dígitos'); return; }
+    if (!/^https?:$/.test(location.protocol)) { toast('Abre la app desde su enlace en internet para publicar'); return; }
+    var con = [], sin = 0;
+    S.products.forEach(function(p){
+      if (p.stock === null || p.stock === undefined) { sin++; return; }
+      if (p.stock > 0) con.push([p.name, p.emoji, Number(p.price) || 0, p.stock, (p.options || []).map(function(o){ return [o.n, Number(o.x) || 0]; })]);
+    });
+    if (!con.length) { toast('Ningún producto tiene existencia'); return; }
+    var o = {v: 1, n: S.shop || 'Mi puesto', w: '52' + wa, m: String(S.mkt || '').split('\n').map(function(x){ return x.trim(); }).filter(Boolean).slice(0, 10), t: Date.now(), p: con};
+    var b = btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    ui.link = new URL('pedidos.html', location.href).href + '#' + b;
+    openSheet('<h2>Catálogo publicado</h2><div class="ph">' + con.length + ' productos con existencia.' + (sin ? ' ' + sin + ' productos sin control de inventario no salen.' : '') + ' Comparte este enlace con tus clientes.</div>' +
+      '<textarea id="lnk" rows="4" readonly style="width:100%;font-size:12px;margin:8px 0">' + esc(ui.link) + '</textarea>' +
+      '<button class="btn go" style="width:100%;margin-bottom:8px" data-act="pubwa">Enviar por WhatsApp</button>' +
+      '<button class="btn ghost" style="width:100%;margin-bottom:8px" data-act="publink">Copiar enlace</button>' +
+      '<button class="btn ghost" style="width:100%;margin-bottom:8px" data-act="pubsee">Ver como cliente</button>' +
+      '<button class="btn ghost" style="width:100%" data-act="closesheet">Cerrar</button>');
+  },
+  pubsee: function(){ window.open(ui.link, '_blank'); },
+  pubwa: function(){ window.open('https://wa.me/?text=' + encodeURIComponent('Haz tu pedido de ' + (S.shop || 'Mi puesto') + ': ' + ui.link), '_blank'); },
+  publink: function(){
+    var t = $('#lnk'), done = function(){ toast('Enlace copiado'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(ui.link).then(done, function(){ t.select(); toast('Mantén presionado el enlace para copiarlo'); }); }
+    else { t.select(); var ok = false; try { ok = document.execCommand('copy'); } catch (e) {} if (ok) done(); else toast('Mantén presionado el enlace para copiarlo'); }
+  },
   demoreset: function(){
     ask('Se borran las ventas de prueba y vuelve el catálogo de ejemplo.', 'Reiniciar demo', function(){
       S = seed(); ui.ticket = []; ui.cat = null; ui.view = 'vender'; ui.date = dkey(new Date()); save(); render(); toast('Demo reiniciada');
@@ -627,6 +664,10 @@ document.addEventListener('input', function(e){
     ui.paid = v === '' ? null : parseFloat(v);
     if (ui.paid != null && isNaN(ui.paid)) ui.paid = null;
     updateChg();
+  } else if (e.target.id === 'wain') {
+    S.wa = e.target.value.replace(/\D/g, '').slice(0, 10); if (e.target.value !== S.wa) e.target.value = S.wa; save();
+  } else if (e.target.id === 'mktin') {
+    S.mkt = e.target.value; save();
   } else if (e.target.id === 'shopin') {
     S.shop = e.target.value; save();
     $('#shop').textContent = S.shop || 'Mi puesto';
