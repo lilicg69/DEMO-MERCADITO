@@ -62,7 +62,7 @@ function decode(h){
       var stock = Math.max(0, parseInt(r[3], 10) || 0);
       if (!stock) return;
       var opts = Array.isArray(r[4]) ? r[4].slice(0, 30).map(function(x){ return {n: String(x[0]), x: Number(x[1]) || 0}; }) : [];
-      P.push({name: String(r[0]), emoji: String(r[1] || ''), price: Number(r[2]) || 0, stock: stock, opts: opts});
+      P.push({name: String(r[0]), emoji: String(r[1] || ''), price: Number(r[2]) || 0, stock: stock, opts: opts, id: String(r[5] || '').slice(0, 40)});
     });
     if (!P.length) return null;
     return {n: String(o.n || 'Mi puesto'), w: String(o.w), m: (Array.isArray(o.m) ? o.m : (o.m ? [o.m] : [])).slice(0, 10).map(function(x){ return String(x).slice(0, 60); }), t: Number(o.t) || 0, p: P};
@@ -98,16 +98,22 @@ function list(){
 }
 function draw(){ $('#list').innerHTML = list(); $('#tot').textContent = money(total()); }
 
-function msg(name, day){
+function code(name, mk, items){
+  var o = {v: 1, n: name, m: mk, t: Date.now(), i: items};
+  return btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function msg(name){
   var mk = D.m.length > 1 ? $('#mk').value : (D.m[0] || '');
-  var L = ['Hola, soy ' + name + '. Quiero apartar este pedido para recogerlo el ' + day + (mk ? ' en ' + mk : '') + ':', ''];
+  var L = ['Hola, soy ' + name + '. Quiero apartar este pedido' + (mk ? ' para recogerlo en ' + mk : '') + ':', ''];
+  var items = [];
   D.p.forEach(function(p, i){
     lines(p).forEach(function(l){
       var q = qty(i, l.o);
+      if (q) items.push([p.id, p.name, l.o, q, l.price]);
       if (q) L.push('• ' + q + ' x ' + p.name + (l.o ? ' + ' + l.o : '') + ' = ' + money(q * l.price));
     });
   });
-  L.push('', 'Total estimado: ' + money(total()), 'Pago en efectivo al recoger. Pedido sujeto a disponibilidad.');
+  L.push('', 'Total estimado: ' + money(total()), 'Pago en efectivo al recoger. Pedido sujeto a disponibilidad.', '', 'Código del pedido (no lo borres): MP1-' + code(name, mk, items));
   return L.join('\n');
 }
 function fmtW(w){ var d = w.slice(2); return d.slice(0, 3) + ' ' + d.slice(3, 6) + ' ' + d.slice(6, 8) + ' ' + d.slice(8); }
@@ -121,7 +127,7 @@ if (!D) {
   $('#main').innerHTML = '<div class="note">Elige lo que quieres. Pagas en efectivo cuando lo recoges. El pedido queda sujeto a disponibilidad.</div><div id="list"></div>' +
     '<div class="card"><label for="nm">Tu nombre</label><input id="nm" autocomplete="name" maxlength="60">' +
     (D.m.length > 1 ? '<label for="mk">¿En qué mercadito lo recoges?</label><select id="mk">' + D.m.map(function(x){ return '<option>' + esc(x) + '</option>'; }).join('') + '</select>' : (D.m.length ? '<div class="ph">Lo recoges en: <b>' + esc(D.m[0]) + '</b></div>' : '')) +
-    '<label for="dy">¿Qué día lo recoges?</label><input id="dy" maxlength="40" placeholder="Ejemplo: sábado"></div>';
+    '</div>';
   $('#bar').style.display = 'flex';
   draw();
   document.addEventListener('click', function(e){
@@ -135,11 +141,10 @@ if (!D) {
     draw();
   });
   $('#send').addEventListener('click', function(){
-    var name = $('#nm').value.trim(), day = $('#dy').value.trim();
+    var name = $('#nm').value.trim();
     if (total() <= 0) { toast('Elige al menos un producto'); return; }
     if (!name) { toast('Escribe tu nombre'); $('#nm').focus(); return; }
-    if (!day) { toast('Escribe qué día lo recoges'); $('#dy').focus(); return; }
-    var u = 'https://wa.me/' + D.w + '?text=' + encodeURIComponent(msg(name, day));
+    var u = 'https://wa.me/' + D.w + '?text=' + encodeURIComponent(msg(name));
     window.__lastWa = u;
     location.href = u;
   });
